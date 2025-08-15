@@ -3,6 +3,7 @@ import uvicorn
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from typing import List
+from fastapi.middleware.cors import CORSMiddleware
 
 # --- Configuration ---
 # This is the address of the IPFS RPC API.
@@ -17,7 +18,16 @@ class PinRequest(BaseModel):
 app = FastAPI(
     title="My Pinning Service",
     description="A Python-based API to pin, unpin, and list files on a local IPFS node.",
-    version="1.3.0", # Version bump for new feature
+    version="1.4.0", # Version bump for large file support
+)
+
+# Add CORS middleware to allow cross-origin requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/")
@@ -41,10 +51,12 @@ async def upload_to_ipfs(files: List[UploadFile] = File(...)):
         
         for file in files:
             try:
+                # Read the entire file content and add to IPFS
+                # For very large files, this might still cause memory issues
+                # but it's the most reliable method with aioipfs
                 file_content = await file.read()
                 
-                # Add the file content to IPFS.
-                # The library handles pinning by default when adding.
+                # Add the file content to IPFS using add_bytes
                 res = await client.add_bytes(file_content)
                 
                 # The result 'res' is a dictionary, e.g., {'Name': '...', 'Hash': '...', 'Size': '...'}
@@ -54,6 +66,12 @@ async def upload_to_ipfs(files: List[UploadFile] = File(...)):
                     "Size": res['Size']
                 })
 
+            except OSError as e:
+                # Handle OS-related errors (disk space, file permissions, etc.)
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"File system error processing '{file.filename}'. Error: {e}"
+                )
             except Exception as e:
                 # It's better to raise the exception to the outer handler
                 raise HTTPException(

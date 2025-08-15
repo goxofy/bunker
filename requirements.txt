@@ -4,3 +4,5 @@ python-multipart
 aioipfs
 click
 requests
+tqdm
+requests-toolbelt
